@@ -1,14 +1,17 @@
 const admin = require('firebase-admin');
-// 1. Impor getFirestore
 const { getFirestore } = require('firebase-admin/firestore');
-const serviceAccount = require('../serviceAccountKey.json');
+
+
+const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+const serviceAccount = JSON.parse(serviceAccountString);
+
+
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 
-// 2. Inisialisasi service Firestore
 const db = getFirestore();
 
-// 3. Ekspor 'db' bersama dengan 'admin'
 module.exports = { admin, db };
