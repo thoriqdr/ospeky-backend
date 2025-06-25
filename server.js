@@ -22,7 +22,8 @@ const prisma = new PrismaClient();
 
 // Middleware
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN,
+  // Mengubah string yang dipisahkan koma dari .env menjadi array URL
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : false,
   optionsSuccessStatus: 200 
 };
 app.use(cors(corsOptions));
