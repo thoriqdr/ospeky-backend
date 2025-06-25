@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `Produk` ADD COLUMN `totalTerjual` INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `Produk` ADD COLUMN `hargaTotalPO` INTEGER NULL,
+    ADD COLUMN `stokPO` INTEGER NULL;

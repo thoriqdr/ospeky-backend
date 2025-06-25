@@ -1,0 +1,203 @@
+// backend/prisma/schema.prisma (Final dengan Sistem Transaksi Pembayaran)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+enum TipeProduk {
+  TUNGGAL
+  VARIAN
+  PO_LANGSUNG
+  PO_DP
+}
+
+// --- PERUBAHAN 1: Tambahkan status baru ---
+enum OrderStatus {
+  MENUNGGAK
+  MENUNGGU_PELUNASAN // <-- STATUS BARU untuk PO yang sudah bayar DP
+  LUNAS
+  DIPROSES
+  DIKIRIM
+  SELESAI
+  DIBATALKAN
+}
+
+enum PackingStatus {
+  BELUM_DIKEMAS
+  SEDANG_DIKEMAS
+  SIAP_DIKIRIM
+}
+
+// --- MODEL BARU: Untuk mencatat setiap transaksi pembayaran ---
+model TransaksiPembayaran {
+  id            String   @id @default(cuid())
+  tokenMidtrans String   @unique // Token dari Midtrans untuk membuka popup
+  tipe          String   // Tipe transaksi, misal: "DP" atau "PELUNASAN"
+  status        String   // Status dari Midtrans, misal: "pending", "settlement"
+  jumlah        Int   
+  
+  // Relasi ke Pesanan
+  pesananId     String
+  pesanan       Pesanan  @relation(fields: [pesananId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+// --- AKHIR MODEL BARU ---
+
+model NomorUrutCounter {
+  prefix     String @id
+  lastNumber Int    @default(0)
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  nama        String
+  nomorHp     String?
+  role        UserRole @default(CUSTOMER)
+  firebaseUid String   @unique
+  alamat      Alamat[]
+  pesanan     Pesanan[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Alamat {
+  id             String    @id @default(cuid())
+  namaPenerima   String
+  nomorTelepon   String
+  kota           String
+  kecamatan      String
+  detailAlamat   String    @db.Text
+  isAlamatUtama  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pesanan        Pesanan[]
+}
+
+enum UserRole {
+  ADMIN
+  CUSTOMER
+}
+
+model Universitas {
+  id        String     @id @default(cuid())
+  nama      String     @unique
+  logoUrl   String?
+  status    String     @default("Aktif")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  fakultas  Fakultas[]
+  produk    Produk[]
+}
+
+model Fakultas {
+  id            String      @id @default(cuid())
+  nama          String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  universitasId String
+  universitas   Universitas @relation(fields: [universitasId], references: [id], onDelete: Cascade)
+  produk        Produk[]
+  @@unique([nama, universitasId])
+}
+
+model Produk {
+  id            String          @id @default(cuid())
+  idProduk      String          @unique
+  namaProduk    String
+  deskripsi     String          @db.Text
+  isPO          Boolean         @default(false)
+  tipeProduk    TipeProduk  @default(TUNGGAL)
+  hargaPO       Int?
+  stokPO        Int?
+  hargaTotalPO  Int?
+  gambarUrls    String?         @db.Text
+  status        String          @default("Aktif")
+  totalTerjual  Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  universitasId String?
+  universitas   Universitas?    @relation(fields: [universitasId], references: [id], onDelete: SetNull)
+  fakultasId    String?
+  fakultas      Fakultas?       @relation(fields: [fakultasId], references: [id], onDelete: SetNull)
+  variants      Varian[]
+  DetailPesanan DetailPesanan[]
+}
+
+model Varian {
+  id           String          @id @default(cuid())
+  namaVarian   String
+  harga        Int
+  stok         Int             @default(0)
+  terjual      Int             @default(0)
+  gambarUrl    String?
+  produkId     String
+  produk       Produk          @relation(fields: [produkId], references: [id], onDelete: Cascade)
+  DetailPesanan DetailPesanan[]
+}
+
+model Pesanan {
+  id              String @id @default(cuid())
+  nomorUrutPrefix String?
+  nomorUrutAngka  Int?
+  
+  total            Int
+  status           OrderStatus   @default(MENUNGGAK)
+  statusPacking    PackingStatus @default(BELUM_DIKEMAS)
+  jumlahDp         Int?
+  tanggalDp        DateTime?
+  jumlahPelunasan  Int?
+  tanggalPelunasan DateTime?
+  metodePembayaran String?
+  opsiPengiriman   String?
+  catatan          String?       @db.Text
+  
+  alamatPengirimanId String?
+  alamatPengiriman   Alamat?       @relation(fields: [alamatPengirimanId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  detailPesanan      DetailPesanan[]
+
+  // --- PERUBAHAN 2: Tambahkan relasi ke tabel baru ---
+  transaksi          TransaksiPembayaran[]
+  
+  @@unique([nomorUrutPrefix, nomorUrutAngka])
+}
+
+model DetailPesanan {
+  id        String  @id @default(cuid())
+  jumlah    Int
+  harga     Int     // Ini akan menjadi harga per item saat checkout (DP atau harga lunas)
+
+  // --- Kolom Snapshot untuk menyimpan data produk secara historis ---
+  namaProdukSnapshot   String     @default("")
+  gambarProdukSnapshot String?    @db.Text
+  tipeProdukSnapshot   TipeProduk @default(TUNGGAL)
+  hargaTotalPOSnapshot Int?
+  // --- Akhir dari Kolom Snapshot ---
+
+  // Relasi ke tabel Pesanan (Induk)
+  pesanan   Pesanan @relation(fields: [pesananId], references: [id], onDelete: Cascade)
+  pesananId String
+
+  // --- Perubahan pada Relasi ke Produk dan Varian ---
+  // Relasi ke Produk dibuat opsional agar produk bisa dihapus tanpa merusak riwayat pesanan
+  produk    Produk?  @relation(fields: [produkId], references: [id], onDelete: SetNull)
+  produkId  String?  // Dibuat opsional dengan tanda tanya (?)
+
+  // Relasi ke Varian juga dibuat opsional
+  variant   Varian? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variantId String?
+}
